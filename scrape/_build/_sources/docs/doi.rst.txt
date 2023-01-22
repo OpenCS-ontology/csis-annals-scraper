@@ -1,7 +1,0 @@
-doi module
-==========
-
-.. automodule:: doi
-   :members:
-   :undoc-members:
-   :show-inheritance:
