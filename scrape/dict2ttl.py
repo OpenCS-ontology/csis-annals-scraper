@@ -7,7 +7,7 @@ import pandas as pd
 from rdflib import BNode
 
 
-def add_to_graph(g, subject, predicate, object_):
+def add_to_graph(g, subject, predicate, object_, datatype=None, to_literal=True):
     """
     Add a triple to the RDF graph.
 
@@ -19,14 +19,22 @@ def add_to_graph(g, subject, predicate, object_):
         The subject of the triple.
     predicate : rdflib.URIRef
         The predicate of the triple.
-    object_ : rdflib.URIRef or rdflib.BNode or rdflib.Literal
+    object_ : rdflib.URIRef or rdflib.BNode or rdflib.Literal or str or int
         The object of the triple.
-
+    datatype : Optional[str]
+        The datatype of the object if the object is to be added as a literal.
+    to_literal : Optional[bool]
+        Indicates if the object should be added as a literal or not. Default is True.
     Returns
     -------
     None
     """
-    g.add((subject, predicate, object_))
+    if object_ is not None:
+        if to_literal:
+            assert datatype is not None
+            g.add((subject, predicate, Literal(object_, datatype=datatype)))
+        else:
+            g.add((subject, predicate, object_))
 
 
 def convert_dict_to_graph(article_data):
@@ -53,67 +61,71 @@ def convert_dict_to_graph(article_data):
     datacite = Namespace('http://purl.org/spar/datacite/')
     fabio = Namespace('http://purl.org/spar/fabio/')
     g.bind("", bn)
+    g.bind("makg_property", makg_property)
     g.bind("schema", schema)
     g.bind("dc", DC)
     g.bind("datacite", datacite)
     g.bind("fabio", fabio)
     g.bind("makg", makg)
 
-    paper = Literal(article_data['title'])  # .replace(' ', '_').replace(':', '_'))
+    paper = Literal(article_data['title'])
     paper = URIRef(bn.paper)
 
-    add_to_graph(g, makg.Author, RDFS.label, Literal('Author', lang="en"))
+    add_to_graph(g, makg.Author, RDFS.label, Literal('Author', lang="en"), to_literal=False)
     authors = BNode()
 
     authors_processed = []
     for i, author in enumerate(article_data['author']):
         author_ = URIRef(bn + f'author_{i}')
-        add_to_graph(g, author_, RDF.type, makg.Author)
-        add_to_graph(g, author_, schema.name, Literal(author['given'], datatype=XSD.string))
-        add_to_graph(g, author_, schema.familyName, Literal(author['family'], datatype=XSD.string))
-        add_to_graph(g, authors, schema.hasItem, author_)
+        add_to_graph(g, author_, RDF.type, makg.Author, to_literal=False)
+
+        add_to_graph(g, author_, schema.name, author['given'], datatype=XSD.string)
+        add_to_graph(g, author_, schema.familyName, author['family'], datatype=XSD.string)
+        add_to_graph(g, authors, bn.hasItem, author_, to_literal=False)
+
         authors_processed.append(author_)
 
-    add_to_graph(g, paper, DC.creator, authors)
+    add_to_graph(g, paper, DC.creator, authors, to_literal=False)
 
-    add_to_graph(g, makg.Paper, RDFS.label, Literal('Paper', lang="en"))
-    add_to_graph(g, makg.Journal, RDFS.label, Literal('Journal', lang="en"))
+    add_to_graph(g, makg.Paper, RDFS.label, Literal('Paper', lang="en"), to_literal=False)
+    add_to_graph(g, makg.Journal, RDFS.label, Literal('Journal', lang="en"), to_literal=False)
 
-    add_to_graph(g, bn.journal, RDF.type, makg.Journal)
-    add_to_graph(g, bn.journal, schema.WebSite, Literal(article_data['volume_url'], datatype=XSD.anyURI))
-    add_to_graph(g, bn.journal, schema.name, Literal(article_data['journal_name'], datatype=XSD.string))
+    add_to_graph(g, bn.journal, RDF.type, makg.Journal, to_literal=False)
 
-    add_to_graph(g, paper, makg.appearsInJournal, bn.journal)
+    add_to_graph(g, bn.journal, schema.WebSite, article_data['volume_url'], datatype=XSD.anyURI)
 
-    add_to_graph(g, makg_property.ConferenceInstance, RDFS.label, Literal('Conference', lang="en"))
+    add_to_graph(g, bn.journal, schema.name, article_data['journal_name'], datatype=XSD.string)
 
-    add_to_graph(g, bn.conference, RDF.type, makg.ConferenceInstance)
-    add_to_graph(g, bn.conference, schema.name, Literal(article_data['session'], datatype=XSD.string))
-    add_to_graph(g, paper, makg_property.appearsInConferenceInstance, bn.conference)
+    add_to_graph(g, paper, makg_property.appearsInJournal, bn.journal, to_literal=False)
 
-    add_to_graph(g, paper, RDF.type, makg.Paper)
-    add_to_graph(g, paper, DC.title, Literal(article_data['title'], datatype=XSD.anyURI))
-    add_to_graph(g, paper, schema.url, Literal(article_data['url'], datatype=XSD.anyURI))
+    add_to_graph(g, makg.ConferenceInstance, RDFS.label, Literal('Conference', lang="en"), to_literal=False)
 
-    add_to_graph(g, paper, schema.datePublished, Literal(article_data['date'], datatype=XSD.date))
+    add_to_graph(g, bn.conference, RDF.type, makg.ConferenceInstance, to_literal=False)
+    add_to_graph(g, bn.conference, schema.name, article_data['session'], datatype=XSD.string)
+    add_to_graph(g, paper, makg_property.appearsInConferenceInstance, bn.conference, to_literal=False)
 
-    add_to_graph(g, paper, schema.numberOfPages, Literal(article_data['pages'], datatype=XSD.integer))
+    add_to_graph(g, paper, RDF.type, makg.Paper, to_literal=False)
+    add_to_graph(g, paper, DC.title, article_data['title'], datatype=XSD.string)
+    add_to_graph(g, paper, schema.url, article_data['url'], datatype=XSD.anyURI)
 
-    add_to_graph(g, paper, DC.publisher, Literal(article_data['publisher'], datatype=XSD.string))
+    add_to_graph(g, paper, schema.datePublished, article_data['date'], datatype=XSD.date)
 
-    add_to_graph(g, paper, DC.abstract, Literal(article_data['abstract'], datatype=XSD.string))
+    add_to_graph(g, paper, schema.numberOfPages, article_data['pages'], datatype=XSD.integer)
 
-    add_to_graph(g, paper, DC.language, Literal(article_data['language'], datatype=XSD.string))
-    add_to_graph(g, paper, DC.licence, Literal(article_data['licence'], datatype=XSD.anyURI))
+    add_to_graph(g, paper, DC.publisher, article_data['publisher'], datatype=XSD.string)
 
-    add_to_graph(g, paper, schema.additionalType, Literal(article_data['type'], datatype=XSD.string))
+    add_to_graph(g, paper, DC.abstract, article_data['abstract'], datatype=XSD.string)
 
-    add_to_graph(g, paper, DC.source, Literal(article_data['source'], datatype=XSD.string))
+    add_to_graph(g, paper, DC.language, article_data['language'], datatype=XSD.string)
 
-    add_to_graph(g, paper, datacite.issn, Literal(article_data['ISSN'], datatype=XSD.string))
+    add_to_graph(g, paper, DC.licence, article_data['licence'], datatype=XSD.anyURI)
+    add_to_graph(g, paper, schema.additionalType, article_data['type'], datatype=XSD.string)
 
-    add_to_graph(g, paper, datacite.doi, Literal(article_data['DOI'], datatype=XSD.string))
+    add_to_graph(g, paper, DC.source, article_data['source'], datatype=XSD.string)
 
-    add_to_graph(g, paper, fabio.hasDiscipline, Literal(None, datatype=XSD.string))
+    add_to_graph(g, paper, datacite.issn, article_data['ISSN'], datatype=XSD.string)
 
+    add_to_graph(g, paper, datacite.issn, article_data['ISSN'], datatype=XSD.string)
+
+    add_to_graph(g, paper, datacite.doi, article_data['DOI'], datatype=XSD.string)
     return g.serialize(format='turtle')
