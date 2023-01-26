@@ -56,16 +56,13 @@ class CrossRefClient(object):
             url = doi
         else:
             url = "http://dx.doi.org/" + doi
+        
         try:
             r = requests.get(url, headers=self.headers)
             return r.json()
-        except ConnectionError:
+        except (ConnectionError, JSONDecodeError) as e:
+            print(f"No doi information for doi: {doi}")
             return {}
-        except JSONDecodeError as e:
-            print(doi)
-            print(r.text)
-            print("Getting doi information failed due to random network error. Please try again.")
-            raise e
 
     def doi2json(self, doi):
         """

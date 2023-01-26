@@ -92,6 +92,8 @@ class _DriverWrapper(ABC):
         prefs = {"profile.managed_default_content_settings.images": 2}
         chrome_options.add_experimental_option("prefs", prefs)
         self.driver = webdriver.Chrome('/chromedriver', options=chrome_options)
+        #self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+
         self.source = 'FedCSIS'
         self.journal_name = 'Annals of Computer Science and Information Systems'
         self.doi_client = CrossRefClient()
@@ -113,7 +115,25 @@ class _DriverWrapper(ABC):
         None
         """
         self.driver.get(url)
+    
+    def process_author(self, author):
+        """
+        Processes the author's name and returns it in given-family format.
+        The last word of the author string is considered as the family name and the rest is considered as the given name.
 
+        Parameters
+        ----------
+        author : str
+            The name of the author in string format.
+
+        Returns
+        -------
+        dict
+            A dictionary containing the given name and family name of the author.
+        """
+        words = author.split(' ')
+        return {'given': ' '.join(words[:-1]), 'family': words[-1]}
+    
     def get_bibtech(self, text_):
         """
         Extract bibliographic information from a string of text in bibtex format.
@@ -130,39 +150,39 @@ class _DriverWrapper(ABC):
         """
         try:
             author = re.findall(r"author=\{(.*?)\}", text_)[0]
-        except KeyError:
+        except IndexError:
             author = None
 
         try:
             title = re.findall(r"\n\ttitle=\{(.*?)\}", text_)[0]
-        except KeyError:
+        except IndexError:
             title = None
 
         try:
             book_title = re.findall(r"\n\tbooktitle=\{(.*?)\}", text_)[0]
-        except KeyError:
+        except IndexError:
             book_title = None
 
         try:
             year = re.findall(r"year=\{(.*?)\}", text_)[0]
-        except KeyError:
+        except IndexError:
             year = None
 
         try:
             editor = re.findall(r"editor=\{(.*?)\}", text_)[0]
-        except KeyError:
+        except IndexError:
             editor = None
 
         try:
             publisher = re.findall(r"publisher=\{(.*?)\}", text_)[0]
-        except KeyError:
+        except IndexError:
             publisher = None
 
         try:
             pages = re.findall(r"pages=\{(.*?)\}", text_)[0]
-            pages_splitted = pages.replace("pages ", '').replace(". ", '').split('--')
+            pages_splitted = re.findall(r'\d+',pages)
             pages_no = int(pages_splitted[1]) - int(pages_splitted[0])
-        except KeyError:
+        except IndexError:
             pages_no = None
 
         return author, title, book_title, year, editor, publisher, pages_no
@@ -224,13 +244,16 @@ class _DriverWrapper(ABC):
             elements = elements[::2]
         script = "var viewPortHeight = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);" \
                  + "var elementTop = arguments[0].getBoundingClientRect().top;" \
-                 + "window.scrollBy(0, elementTop-(viewPortHeight/2));";
+                 + "window.scrollBy(0, elementTop-(viewPortHeight/2));"
 
         for element in elements:
             if make_visible:
                 self.driver.execute_script(script, element)
-                WebDriverWait(self.driver, 10).until(EC.visibility_of(element))
-            element.click()
+                element = WebDriverWait(self.driver, 10).until(EC.visibility_of(element))
+                element = WebDriverWait(self.driver, 10).until(EC.element_to_be_clickable(element))
+                self.driver.execute_script("arguments[0].click();", element)
+            else:
+                element.click()
 
     def get_doi_and_abstract(self, url):
         """
@@ -261,17 +284,19 @@ class _DriverWrapper(ABC):
 
     def return_title_from_xml(self, file):
         """
-        Extract the title from a xml file.
+        Extracts the title from an XML file using the BeautifulSoup library.
+        It opens the file, reads its content, parse it as an XML, and finds the first element with the tag 'title'.
+        If an IndexError is raised, it returns the basename of the file without its extension as the title.
 
         Parameters
         ----------
         file : str
-            The path of the xml file
+            The file path of the xml file from which title needs to be extracted
 
         Returns
         -------
         str
-            The title of the xml file
+            The title of the article.
         """
         with open(file, 'r') as f:
             data = f.read()
@@ -279,10 +304,7 @@ class _DriverWrapper(ABC):
             try:
                 return data.find_all('title')[0].contents[0]
             except IndexError as e:
-                print(file)
-                print(data)
-                print("There was a random problem with GROBID, please try again.")
-                raise e
+                return os.path.basename(file).replace('.tei.xml', '')
 
     def rename_pdfs_and_return_new_filenames(self, pdfs_dir):
         """
@@ -406,6 +428,7 @@ class _DriverWrapper(ABC):
         pass
 
 
+
 class DriverWrapper(_DriverWrapper):
     """
         General purpose wrapper class for majority of volumes
@@ -497,7 +520,7 @@ class DriverWrapper(_DriverWrapper):
             date = doi_info[file_for_doi_id].get("deposited", {}).get("date-time", year)
 
             title = doi_info[file_for_doi_id].get("title", title)
-            author = doi_info[file_for_doi_id].get("author", [author])
+            author = doi_info[file_for_doi_id].get("author", [self.process_author(author_) for author_ in author.split(' and ')])
 
             article_data = {"author": author,
                             "title": title,
@@ -535,29 +558,7 @@ class DriverWrapper_Volume_1(_DriverWrapper):
     This class is a wrapper class that is specifically designed for the first volume.
     It is a subclass of _DriverWrapper.
     """
-    def return_title_from_xml(self, file):
-        """
-        Extracts the title from an XML file using the BeautifulSoup library.
-        It opens the file, reads its content, parse it as an XML, and finds the first element with the tag 'title'.
-        If an IndexError is raised, it returns the basename of the file without its extension as the title.
 
-        Parameters
-        ----------
-        file : str
-            The file path of the xml file from which title needs to be extracted
-
-        Returns
-        -------
-        str
-            The title of the article.
-        """
-        with open(file, 'r') as f:
-            data = f.read()
-            data = BeautifulSoup(data, "xml")
-            try:
-                return data.find_all('title')[0].contents[0]
-            except IndexError as e:
-                return os.path.basename(file).replace('.tei.xml', '')
 
     def get_abstracts(self):
         """
@@ -576,23 +577,7 @@ class DriverWrapper_Volume_1(_DriverWrapper):
 
         return abstracts_formated
 
-    def process_author(self, author):
-        """
-        Processes the author's name and returns it in given-family format.
-        The last word of the author string is considered as the family name and the rest is considered as the given name.
 
-        Parameters
-        ----------
-        author : str
-            The name of the author in string format.
-
-        Returns
-        -------
-        dict
-            A dictionary containing the given name and family name of the author.
-        """
-        words = author.split(' ')
-        return {'given': ' '.join(words[:-1]), 'family': words[-1]}
 
     def traverse_papers(self, url, volume_no):
         """

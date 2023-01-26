@@ -22,4 +22,7 @@ Using `python main.py --help` you can print help. <br />
 You can specify volumes to scrape `python main.py --volumes 1,2,3` or scrape all of them using `python main.py` (more info under  `python main.py --help`).
 Result will be in `Volume_1` directory (or `Volume_2`, `Volume_3`...) etc.
 
+Volumes from 1 to 32 are scraped and saved here: 
+https://drive.google.com/drive/folders/1MydgerBbLuDBpdgi90M3Zx9Xa2gBrDG_?usp=sharing
+
 Documentation is in `scrape/build/index.html`

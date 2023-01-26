@@ -9,6 +9,7 @@ h11==0.14.0
 idna==3.4
 isodate==0.6.1
 lxml==4.9.2
+ndg-httpsclient==0.5.1
 numpy==1.24.1
 outcome==1.2.0
 packaging==23.0
