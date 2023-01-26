@@ -1,0 +1,7 @@
+dict2ttl module
+===============
+
+.. automodule:: dict2ttl
+   :members:
+   :undoc-members:
+   :show-inheritance:
